@@ -34,19 +34,23 @@ async def health_verbose():
 @app.api_route("/api/v1/users/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_users(request: Request, path: str):
     client = app.state.client
-    # Construir URL destino
-    target_url = f"{USER_SERVICE_URL}/users/{path}"
     
-    # Leer el cuerpo de la petición original (si existe)
+    # 🔥 CORREGIDO: Si path está vacío, no agregar barra extra
+    if path:
+        target_url = f"{USER_SERVICE_URL}/users/{path}"
+    else:
+        target_url = f"{USER_SERVICE_URL}/users"  # Sin barra al final
+    
     body = await request.body()
     
-    # Reenviar la petición al microservicio
     resp = await client.request(
         method=request.method,
         url=target_url,
         content=body,
         headers={"Content-Type": "application/json"}
     )
+    
+    return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
     
     # Devolver la misma respuesta
     return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
