@@ -4,20 +4,19 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from contextlib import asynccontextmanager
 
-# Configuración desde variables de entorno
-USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "https://localhost:3000")
+USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:3000")
 PORT = int(os.getenv("PORT", "8000"))
 
-# Cliente HTTP compartido para reutilizar conexiones
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    # Optimización de conexiones estables para pruebas de carga masivas
+    limits = httpx.Limits(max_keepalive_connections=100, max_connections=500)
+    async with httpx.AsyncClient(timeout=15.0, limits=limits) as client:
         app.state.client = client
         yield
 
 app = FastAPI(lifespan=lifespan)
 
-# Health check con verificación de los servicios
 @app.get("/health/verbose")
 async def health_verbose():
     client = app.state.client
@@ -30,26 +29,42 @@ async def health_verbose():
         pass
     return {"gateway": "up", "user_service": user_status, "proxy_to": USER_SERVICE_URL}
 
-# Proxy universal para las rutas de usuarios
 @app.api_route("/api/v1/users/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_users(request: Request, path: str):
     client = app.state.client
-    # Construir URL destino
-    target_url = f"{USER_SERVICE_URL}/users/{path}"
     
-    # Leer el cuerpo de la petición original (si existe)
+    # 1. Normalizar barra final para evitar problemas de enrutamiento (Trailing slash)
+    clean_path = path if path else ""
+    target_url = f"{USER_SERVICE_URL}/users/{clean_path}".rstrip("/")
+    if path.endswith("/"):
+        target_url += "/"
+
+    # 2. Preservar Query Parameters (?page=1&limit=10, etc.)
+    if request.url.query:
+        target_url = f"{target_url}?{request.url.query}"
+    
+    # 3. Clonar headers entrantes (Excluyendo 'host' para no confundir al proxy de la nube)
+    headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
+    
     body = await request.body()
     
-    # Reenviar la petición al microservicio
+    # Reenviar petición
     resp = await client.request(
         method=request.method,
         url=target_url,
         content=body,
-        headers={"Content-Type": "application/json"}
+        headers=headers
     )
     
-    # Devolver la misma respuesta
-    return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+    # 4. Clonar headers de salida devueltos por el microservicio
+    response_headers = {k: v for k, v in resp.headers.items() if k.lower() not in ["content-length", "content-encoding"]}
+    
+    return Response(
+        content=resp.content, 
+        status_code=resp.status_code, 
+        headers=response_headers,
+        media_type="application/json"
+    )
 
 # Si se ejecuta directamente
 if __name__ == "__main__":

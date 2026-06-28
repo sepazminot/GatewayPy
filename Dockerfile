@@ -14,4 +14,4 @@ COPY gateway.py .
 EXPOSE 8000
 
 # NUEVO: Comando de arranque optimizado para controlar la concurrencia en producción
-CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8000", "--limit-concurrency", "20"]
+CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
