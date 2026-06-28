@@ -43,7 +43,7 @@ async def proxy_users(request: Request, path: str):
         target_url = f"{target_url}?{request.url.query}"
     body = await request.body()
     # 3. Clonar headers entrantes (Excluyendo 'host' para no confundir al proxy de la nube)
-    headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in ["host", "accept-encoding"]}
     
     # Reenviar peticións
     resp = await client.request(
