@@ -34,21 +34,18 @@ async def proxy_users(request: Request, path: str):
     client = app.state.client
     
     # 1. Normalizar barra final para evitar problemas de enrutamiento (Trailing slash)
-    clean_path = path if path else ""
-    target_url = f"{USER_SERVICE_URL}/users/{clean_path}".rstrip("/")
-    if path.endswith("/"):
-        target_url += "/"
-
+    if path:
+        target_url = f"{USER_SERVICE_URL}/users/{path}"
+    else:
+        target_url = f"{USER_SERVICE_URL}/users"
     # 2. Preservar Query Parameters (?page=1&limit=10, etc.)
     if request.url.query:
         target_url = f"{target_url}?{request.url.query}"
-    
+    body = await request.body()
     # 3. Clonar headers entrantes (Excluyendo 'host' para no confundir al proxy de la nube)
     headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
     
-    body = await request.body()
-    
-    # Reenviar petición
+    # Reenviar peticións
     resp = await client.request(
         method=request.method,
         url=target_url,
